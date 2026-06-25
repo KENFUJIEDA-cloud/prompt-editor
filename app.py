@@ -31,7 +31,7 @@ st.markdown("""
 
 MODEL_ID = "jp.anthropic.claude-sonnet-4-6"
 REGION = "ap-northeast-1"
-AWS_PROFILE = "PowerUser-980268627924"
+
 
 EVAL_CRITERIA = [
     ("clarity",     "明確さ"),
@@ -80,7 +80,11 @@ def score_color(score):
 
 @st.cache_resource
 def get_bedrock_client():
-    session = boto3.Session(profile_name=AWS_PROFILE)
+    session = boto3.Session(
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
+    )
     return session.client("bedrock-runtime", region_name=REGION)
 
 
