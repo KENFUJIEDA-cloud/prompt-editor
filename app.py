@@ -10,6 +10,18 @@ from datetime import datetime
 import boto3
 from botocore.session import Session
 import streamlit as st
+from dotenv import load_dotenv
+load_dotenv()
+
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import llm
+
+LLMObs.enable(
+    ml_app=os.environ.get("DD_LLMOBS_ML_APP", "prompt-editor"),
+    api_key=os.environ.get("DD_API_KEY"),
+    site=os.environ.get("DD_SITE", "ap1.datadoghq.com"),
+    agentless_enabled=True,
+)
 
 st.set_page_config(page_title="LLM Prompt Editor", page_icon="✏️", layout="wide")
 
@@ -25,6 +37,7 @@ st.markdown("""
   .comment-card.good { border-color: #3B6D11; background: #F2F8EA; }
   .comment-card.warn { border-color: #BA7517; background: #FEF6E8; }
   .comment-card.bad  { border-color: #A32D2D; background: #FEF0F0; }
+  .reflect-btn button { background-color: #F5A623 !important; color: #fff !important; border: none !important; }
   .improved-box { background: #F2F8EA; border: 0.5px solid #97C459; border-radius: 10px; padding: 14px 16px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; font-family: monospace; }
 </style>
 """, unsafe_allow_html=True)
@@ -88,6 +101,7 @@ def get_bedrock_client():
     return session.client("bedrock-runtime", region_name=REGION)
 
 
+@llm(model_name="claude-sonnet-4-6", model_provider="bedrock", name="score_prompt", session_id="prompt-editor")
 def score_prompt(prompt_text, client):
     body = json.dumps({
         "anthropic_version": "bedrock-2023-05-31",
@@ -102,6 +116,7 @@ def score_prompt(prompt_text, client):
         if m: raw = m.group(0)
         return json.loads(raw)
     except Exception as e:
+        st.session_state["last_error"] = str(e)
         st.error(f"Bedrock エラー: {e}")
         return None
 
@@ -142,6 +157,7 @@ with left:
 
     if st.session_state.result and st.session_state.result.get("improved_prompt"):
         st.markdown("")
+        st.markdown('<style>div.stButton:nth-of-type(3) button{background-color:#F5A623!important;border-color:#F5A623!important;color:#fff!important;}</style>', unsafe_allow_html=True)
         if st.button("⬆️ 改善案を入力欄に反映して再採点", use_container_width=True):
             st.session_state.prompt_text = st.session_state.result["improved_prompt"]
             st.session_state.result = None
@@ -149,6 +165,8 @@ with left:
 
 with right:
     st.markdown("#### 📊 採点結果")
+    if st.session_state.get("last_error"):
+        st.error(f"直前のエラー: {st.session_state['last_error']}")
     if not prompt_input.strip():
         st.info("左側にプロンプトを入力してください。")
     elif st.session_state.result is None and not run_btn:
