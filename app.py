@@ -134,7 +134,7 @@ def score_prompt(prompt_text, client):
         raw = json.loads(response["body"].read())["content"][0]["text"].strip()
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m: raw = m.group(0)
-        result = json.loads(raw)
+        result = json.loads(raw, strict=False)
         send_dd_log(
             message=f"Bedrock呼び出し成功: {prompt_text[:50]}...",
             level="info",
