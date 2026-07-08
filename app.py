@@ -10,6 +10,40 @@ from datetime import datetime
 import boto3
 from botocore.session import Session
 import streamlit as st
+from dotenv import load_dotenv
+import logging
+import requests
+from datetime import timezone
+
+load_dotenv()
+
+# Datadog Log送信設定
+DD_API_KEY = os.environ.get("DD_API_KEY", "")
+DD_SITE = os.environ.get("DD_SITE", "ap1.datadoghq.com")
+DD_LOG_URL = f"https://http-intake.logs.{DD_SITE}/api/v2/logs"
+
+def send_dd_log(message, level="info", extra=None):
+    if not DD_API_KEY:
+        return
+    payload = {
+        "ddsource": "python",
+        "ddtags": "app:prompt-editor,env:production",
+        "hostname": "wsl-prompt-editor",
+        "service": "prompt-editor",
+        "status": level,
+        "message": message,
+    }
+    if extra:
+        payload.update(extra)
+    try:
+        requests.post(
+            DD_LOG_URL,
+            headers={"DD-API-KEY": DD_API_KEY, "Content-Type": "application/json"},
+            json=payload,
+            timeout=3,
+        )
+    except Exception:
+        pass
 
 st.set_page_config(page_title="LLM Prompt Editor", page_icon="✏️", layout="wide")
 
@@ -100,8 +134,23 @@ def score_prompt(prompt_text, client):
         raw = json.loads(response["body"].read())["content"][0]["text"].strip()
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m: raw = m.group(0)
-        return json.loads(raw)
+        result = json.loads(raw)
+        send_dd_log(
+            message=f"Bedrock呼び出し成功: {prompt_text[:50]}...",
+            level="info",
+            extra={
+                "prompt_length": len(prompt_text),
+                "total_score": round(sum(result.get("scores", {}).values()) / 6) if result.get("scores") else 0,
+                "model": MODEL_ID,
+            }
+        )
+        return result
     except Exception as e:
+        send_dd_log(
+            message=f"Bedrockエラー: {str(e)}",
+            level="error",
+            extra={"prompt_length": len(prompt_text), "model": MODEL_ID}
+        )
         st.error(f"Bedrock エラー: {e}")
         return None
 
